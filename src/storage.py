@@ -1,6 +1,7 @@
 import os
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 from google.cloud.storage import Bucket, Client
 from pydantic import BaseModel, Field
 from typing import Annotated
@@ -15,7 +16,6 @@ from nexo.logging.enums import LogLevel
 from nexo.schemas.application import OptApplicationContext
 from nexo.schemas.connection import OptConnectionContext
 from nexo.schemas.google import ListOfPublisherHandlers
-from nexo.schemas.data import DataPair
 from nexo.schemas.error.enums import ErrorCode
 from nexo.schemas.exception.factory import MaleoExceptionFactory
 from nexo.schemas.operation.enums import (
@@ -50,6 +50,11 @@ CLOUD_STORAGE_RESOURCE = deepcopy(GOOGLE_RESOURCE)
 CLOUD_STORAGE_RESOURCE.identifiers.append(
     ResourceIdentifier(key="cloud_storage", name="Cloud Storage", slug="cloud-storage")
 )
+
+
+class Disposition(StrEnum):
+    ATTACHMENT = "attachment"
+    INLINE = "inline"
 
 
 class Asset(BaseModel):
@@ -161,18 +166,13 @@ class GoogleCloudStorage(GoogleClientManager):
                     method="GET",
                 )
 
-            if use_cache:
-                client = self._redis.client.get(Connection.ASYNC)
-                cache_key = build_cache_key(blob_name, namespace=self._namespace)
-                await client.set(name=cache_key, value=url, ex=expiration.value)
+            client = self._redis.client.get(Connection.ASYNC)
+            cache_key = build_cache_key(blob_name, namespace=self._namespace)
+            await client.set(name=cache_key, value=url, ex=expiration.value)
 
             asset = Asset(url=url)
-            operation_response_data = DataPair[None, Asset](
-                old=None,
-                new=asset,
-            )
-            operation_response = CreateSingleDataResponse[Asset, None](
-                data=operation_response_data, metadata=None, other=None
+            operation_response = CreateSingleDataResponse[Asset, None].new(
+                data=asset, metadata=None, other=None
             )
             operation = CreateSingleResourceOperation[Asset, None](
                 application_context=self._application_context,
@@ -216,6 +216,8 @@ class GoogleCloudStorage(GoogleClientManager):
     async def generate_signed_url(
         self,
         location: str,
+        disposition: Disposition = Disposition.ATTACHMENT,
+        filename: OptStr = None,
         *,
         operation_id: OptUUID = None,
         connection_context: OptConnectionContext = None,
@@ -249,9 +251,8 @@ class GoogleCloudStorage(GoogleClientManager):
                 operation_context = deepcopy(self._operation_context)
                 operation_context.target.type = OperationTarget.CACHE
                 asset = Asset(url=url)
-                operation_response_data = DataPair[Asset, None](old=asset, new=None)
-                operation_response = ReadSingleDataResponse[Asset, None](
-                    data=operation_response_data, metadata=None, other=None
+                operation_response = ReadSingleDataResponse[Asset, None].new(
+                    data=asset, metadata=None, other=None
                 )
                 operation = ReadSingleResourceOperation[Asset, None](
                     application_context=self._application_context,
@@ -294,19 +295,29 @@ class GoogleCloudStorage(GoogleClientManager):
             exc.log_and_publish_operation(self._logger, self._publishers)
             raise exc
 
+        if disposition is Disposition.ATTACHMENT:
+            if filename is None:
+                response_disposition = None
+            else:
+                response_disposition = (
+                    f"{Disposition.ATTACHMENT.value}; filename={filename}"
+                )
+        elif disposition is Disposition.INLINE:
+            response_disposition = "inline"
+
         url = blob.generate_signed_url(
-            version="v4", expiration=timedelta(seconds=expiration.value), method="GET"
+            expiration=timedelta(seconds=expiration.value),
+            response_disposition=response_disposition,
+            version="v4",
         )
 
-        if use_cache:
-            client = self._redis.client.get(Connection.ASYNC)
-            cache_key = build_cache_key(blob_name, namespace=self._namespace)
-            await client.set(name=cache_key, value=url, ex=expiration.value)
+        client = self._redis.client.get(Connection.ASYNC)
+        cache_key = build_cache_key(blob_name, namespace=self._namespace)
+        await client.set(name=cache_key, value=url, ex=expiration.value)
 
         asset = Asset(url=url)
-        operation_response_data = DataPair[Asset, None](old=asset, new=None)
-        operation_response = ReadSingleDataResponse[Asset, None](
-            data=operation_response_data, metadata=None, other=None
+        operation_response = ReadSingleDataResponse[Asset, None].new(
+            data=asset, metadata=None, other=None
         )
         operation = ReadSingleResourceOperation[Asset, None](
             application_context=self._application_context,

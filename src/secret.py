@@ -10,7 +10,6 @@ from nexo.logging.config import LogConfig
 from nexo.logging.enums import LogLevel
 from nexo.schemas.application import OptApplicationContext
 from nexo.schemas.connection import OptConnectionContext
-from nexo.schemas.data import DataPair
 from nexo.schemas.error.enums import ErrorCode
 from nexo.schemas.exception.factory import MaleoExceptionFactory
 from nexo.schemas.operation.enums import OperationType
@@ -156,12 +155,8 @@ class GoogleSecretManager(GoogleClientManager):
             self._client.add_secret_version(request=request)
 
             secret = Secret[ValueT](name=name, version="latest", value=value)
-            operation_response_data = DataPair[None, Secret[ValueT]](
-                old=None,
-                new=secret,
-            )
-            operation_response = CreateSingleDataResponse[Secret[ValueT], None](
-                data=operation_response_data, metadata=None, other=None
+            operation_response = CreateSingleDataResponse[Secret[ValueT], None].new(
+                data=secret, metadata=None, other=None
             )
             CreateSingleResourceOperation[Secret[ValueT], None](
                 application_context=self._application_context,
@@ -357,11 +352,8 @@ class GoogleSecretManager(GoogleClientManager):
                 value = response.payload.data.decode()
 
             secret = Secret[value_type](name=name, version=version, value=value)
-            operation_response_data = DataPair[Secret[value_type], None](
-                old=secret, new=None
-            )
-            operation_response = ReadSingleDataResponse[Secret[value_type], None](
-                data=operation_response_data, metadata=None, other=None
+            operation_response = ReadSingleDataResponse[Secret[value_type], None].new(
+                data=secret, metadata=None, other=None
             )
 
             ReadSingleResourceOperation[
