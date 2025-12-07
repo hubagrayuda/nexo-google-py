@@ -7,7 +7,7 @@ from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from google.cloud.pubsub_v1.subscriber.message import Message
 from google.cloud.pubsub_v1.types import FlowControl
-from typing import Any, Coroutine, Dict, Generic, Sequence
+from typing import Dict, Generic, Sequence
 from nexo.logging.config import LogConfig
 from nexo.schemas.application import OptApplicationContext
 from nexo.schemas.google import PublisherHandler
@@ -20,7 +20,7 @@ from .config import PubSubConfig
 from .config.publisher import PublisherConfigT
 from .config.subscription import SubscriptionsConfigT
 from .handlers import SubscriptionHandler
-from .types import R, MessageController
+from .types import MessageController
 
 
 PUBSUB_RESOURCE = deepcopy(GOOGLE_RESOURCE)
@@ -108,7 +108,7 @@ class GooglePubSub(
         subscription_id: str,
         message: Message,
         *,
-        controller: MessageController[Coroutine[Any, Any, bool]],
+        controller: MessageController,
     ) -> bool:
         """Run async controller function in a sync context"""
         # Get or create event loop
@@ -132,7 +132,7 @@ class GooglePubSub(
         subscription_id: str,
         message: Message,
         *,
-        controller: MessageController[R],
+        controller: MessageController,
     ):
         """Main callback function which delegates to custom controllers or uses default processing"""
         # Check if the controller function is async

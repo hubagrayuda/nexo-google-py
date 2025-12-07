@@ -1,6 +1,7 @@
 from google.cloud.pubsub_v1.subscriber.message import Message
-from typing import Callable, TypeVar
+from typing import Awaitable, Callable, Concatenate, ParamSpec, TypeVar
 
 
-R = TypeVar("R")
-MessageController = Callable[[str, Message], R]
+P = ParamSpec("P")
+R = TypeVar("R", bool, Awaitable[bool])
+MessageController = Callable[Concatenate[str, Message, P], R]
