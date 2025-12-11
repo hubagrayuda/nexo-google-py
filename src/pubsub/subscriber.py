@@ -49,6 +49,7 @@ class GoogleSubscriberManager(GoogleClientManager, Generic[SubscriptionsConfigT]
         self.config = config
         self.publisher = publisher
         self.client = SubscriberClient(credentials=credentials)
+        self._event_loop = None
         self._active_listeners: Dict[str, StreamingPullFuture] = {}
         self._initialize_subscription_handlers()
 
@@ -60,6 +61,10 @@ class GoogleSubscriberManager(GoogleClientManager, Generic[SubscriptionsConfigT]
     @abstractmethod
     def subscription_handlers(self) -> Sequence[SubscriptionHandler]:
         """Define subscription handlers"""
+
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop):
+        """Set the event loop to use for async operations"""
+        self._event_loop = loop
 
     def _wait_for_async_result(
         self, *, future: asyncio.Future, timeout: float = 30.0
@@ -93,31 +98,25 @@ class GoogleSubscriberManager(GoogleClientManager, Generic[SubscriptionsConfigT]
         controller: MessageController,
     ) -> bool:
         """Run async controller function in a sync context"""
-        # Get or create event loop
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If loop is already running, we need to use run_coroutine_threadsafe
-                # But since we're in a callback, we'll use a different approach
-                future = asyncio.ensure_future(
-                    controller(
-                        self.project_id, self.publisher, subscription_id, message
-                    )
-                )
-                # Wait for completion with timeout
-                return self._wait_for_async_result(future=future)
-            else:
-                # Loop is not running, we can use run_until_complete
-                return loop.run_until_complete(
-                    controller(
-                        self.project_id, self.publisher, subscription_id, message
-                    )
-                )
-        except RuntimeError:
-            # No event loop in current thread, create a new one
+        if self._event_loop is None:
             return asyncio.run(
                 controller(self.project_id, self.publisher, subscription_id, message)
             )
+
+        future = asyncio.run_coroutine_threadsafe(
+            controller(self.project_id, self.publisher, subscription_id, message),
+            self._event_loop,  # Use FastAPI's loop
+        )
+
+        try:
+            return future.result(timeout=30.0)
+        except Exception as e:
+            self._logger.error(
+                "Controller failed",
+                exc_info=True,
+                extra={"json_fields": {"exc_details": extract_details(e)}},
+            )
+            return False
 
     def message_callback(
         self,
