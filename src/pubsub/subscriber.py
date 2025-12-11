@@ -99,12 +99,10 @@ class GoogleSubscriberManager(GoogleClientManager, Generic[SubscriptionsConfigT]
     ) -> bool:
         """Run async controller function in a sync context"""
         if self._event_loop is None:
-            return asyncio.run(
-                controller(self.project_id, self.publisher, subscription_id, message)
-            )
+            return asyncio.run(controller(subscription_id, message))
 
         future = asyncio.run_coroutine_threadsafe(
-            controller(self.project_id, self.publisher, subscription_id, message),
+            controller(subscription_id, message),
             self._event_loop,  # Use FastAPI's loop
         )
 
@@ -134,9 +132,7 @@ class GoogleSubscriberManager(GoogleClientManager, Generic[SubscriptionsConfigT]
             )
         else:
             # Handle sync controller function
-            success = controller(
-                self.project_id, self.publisher, subscription_id, message
-            )
+            success = controller(subscription_id, message)
 
         # Acknowledge or nack based on controller result
         prefix = f"Subscription {subscription_id} - Message {message.message_id}"
