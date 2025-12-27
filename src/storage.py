@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 from typing import Annotated
 from uuid import uuid4
 from nexo.database.enums import Connection
-from nexo.database.managers import RedisManager
+from nexo.database.handlers import RedisHandler
 from nexo.database.enums import CacheOrigin, CacheLayer
-from nexo.database.utils import build_cache_namespace, build_cache_key
+from nexo.database.utils import build_cache_key
 from nexo.enums.expiration import Expiration
 from nexo.logging.config import LogConfig
 from nexo.logging.enums import LogLevel
@@ -70,7 +70,7 @@ class GoogleCloudStorage(GoogleClientManager):
         credentials: OptionalCredentials = None,
         credentials_path: OptPathOrStr = None,
         bucket_name: OptStr = None,
-        redis: RedisManager,
+        redis: RedisHandler,
         publishers: ListOfPublisherHandlers = [],
     ) -> None:
         super().__init__(
@@ -103,9 +103,8 @@ class GoogleCloudStorage(GoogleClientManager):
             raise ValueError(f"Bucket '{self._bucket_name}' does not exist.")
 
         self._redis = redis
-        self._namespace = build_cache_namespace(
+        self._namespace = self._redis.config.build_namespace(
             CLOUD_STORAGE_RESOURCE.aggregate(AggregateField.KEY, sep=":"),
-            base=self._application_context.service_key,
             client=self._key,
             origin=CacheOrigin.CLIENT,
             layer=CacheLayer.SERVICE,
@@ -166,7 +165,7 @@ class GoogleCloudStorage(GoogleClientManager):
                     method="GET",
                 )
 
-            client = self._redis.client.get(Connection.ASYNC)
+            client = self._redis.manager.client.get(Connection.ASYNC)
             cache_key = build_cache_key(blob_name, namespace=self._namespace)
             await client.set(name=cache_key, value=url, ex=expiration.value)
 
@@ -244,7 +243,7 @@ class GoogleCloudStorage(GoogleClientManager):
         resource.details = {"location": location, "blob_name": blob_name}
 
         if use_cache:
-            client = self._redis.client.get(Connection.ASYNC)
+            client = self._redis.manager.client.get(Connection.ASYNC)
             cache_key = build_cache_key(blob_name, namespace=self._namespace)
             url = await client.get(cache_key)
             if url is not None:
@@ -311,7 +310,7 @@ class GoogleCloudStorage(GoogleClientManager):
             version="v4",
         )
 
-        client = self._redis.client.get(Connection.ASYNC)
+        client = self._redis.manager.client.get(Connection.ASYNC)
         cache_key = build_cache_key(blob_name, namespace=self._namespace)
         await client.set(name=cache_key, value=url, ex=expiration.value)
 
